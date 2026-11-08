@@ -1,0 +1,9 @@
+.build/
+build/
+.DS_Store
+.swiftpm/xcode/xcuserdata/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+Scripts/licensing/keys/
+*.xcuserstate
+dist/
+.vscode/

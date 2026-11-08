@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="120" viewBox="0 0 760 120">
+  <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#171c45"/><stop offset=".55" stop-color="#3d2475"/><stop offset="1" stop-color="#124a78"/></linearGradient></defs>
+  <rect width="760" height="120" rx="18" fill="url(#g)"/>
+  <g font-family="-apple-system, Helvetica, Arial" font-size="13" fill="#fff">
+    <g transform="translate(24,26)"><rect width="166" height="68" rx="12" fill="#33c773" fill-opacity=".18" stroke="#33c773" stroke-opacity=".5"/><text x="14" y="26" font-weight="700" fill="#5fe099">✓ Safe</text><text x="14" y="48" font-size="11" fill-opacity=".85">Rebuilt automatically.</text></g>
+    <g transform="translate(206,26)"><rect width="166" height="68" rx="12" fill="#4d99ff" fill-opacity=".18" stroke="#4d99ff" stroke-opacity=".5"/><text x="14" y="26" font-weight="700" fill="#8fbfff">? Review</text><text x="14" y="48" font-size="11" fill-opacity=".85">Your files. You decide.</text></g>
+    <g transform="translate(388,26)"><rect width="166" height="68" rx="12" fill="#ff9e33" fill-opacity=".18" stroke="#ff9e33" stroke-opacity=".5"/><text x="14" y="26" font-weight="700" fill="#ffbf70">! Caution</text><text x="14" y="48" font-size="11" fill-opacity=".85">App data. May break apps.</text></g>
+    <g transform="translate(570,26)"><rect width="166" height="68" rx="12" fill="#f2545c" fill-opacity=".18" stroke="#f2545c" stroke-opacity=".5"/><text x="14" y="26" font-weight="700" fill="#ff8a90">⊘ Protected</text><text x="14" y="48" font-size="11" fill-opacity=".85">macOS needs it. Never deleted.</text></g>
+  </g>
+</svg>
