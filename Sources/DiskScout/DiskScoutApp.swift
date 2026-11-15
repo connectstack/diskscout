@@ -49,7 +49,7 @@ struct DiskScoutApp: App {
         .defaultSize(width: 1000, height: 700)
 
         Settings {
-            SettingsView(settings: model.settings, license: model.license)
+            SettingsView(settings: model.settings)
         }
     }
 
@@ -60,7 +60,6 @@ struct DiskScoutApp: App {
         }
         CommandGroup(after: .appInfo) {
             Divider()
-            Button("Activate License…") { model.showUpgrade = true }
             Button("Welcome to DiskScout") { model.showWelcome = true }
         }
         CommandGroup(replacing: .newItem) {
@@ -102,8 +101,11 @@ struct DiskScoutApp: App {
         let alert = NSAlert()
         alert.messageText = "DiskScout"
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0"
-        alert.informativeText = "Version \(version)\n\nKnow what's safe to delete.\nDiskScout finds what's eating your Mac's storage and explains, for every item, whether removing it is safe.\n\n© 2026 DiskScout. All rights reserved."
+        alert.informativeText = "Version \(version)\n\nKnow what's safe to delete.\nDiskScout finds what's eating your Mac's storage and explains, for every item, whether removing it is safe.\n\nFree and open source under the Apache License 2.0.\n© 2026 DiskScout contributors."
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        alert.addButton(withTitle: "Source Code")
+        if alert.runModal() == .alertSecondButtonReturn, let url = URL(string: "https://github.com/connectstack/diskscout") {
+            NSWorkspace.shared.open(url)
+        }
     }
 }

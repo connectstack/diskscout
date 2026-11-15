@@ -21,7 +21,13 @@ final class SidebarSizer: ObservableObject {
         // (the home folder and everything inside it share a single pass).
         var groups: [URL: Set<String>] = [:]
         let sortedRoots = targets.sorted { $0.path.count < $1.path.count }
+        let sampleHome = AppPaths.isSample ? AppPaths.home.path : nil
         for t in targets {
+            // A sample home sits inside the real one: size it on its own rather than as part of /Users.
+            if let sampleHome, t.path == sampleHome || t.path.hasPrefix(sampleHome + "/") {
+                groups[URL(fileURLWithPath: sampleHome), default: []].insert(t.path)
+                continue
+            }
             let root = sortedRoots.first { t.path == $0.path || t.path.hasPrefix($0.path + "/") } ?? t
             groups[root, default: []].insert(t.path)
         }

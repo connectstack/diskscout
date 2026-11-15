@@ -6,7 +6,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(sizer: model.sizer, cleaner: model.cleaner, license: model.license, trash: model.trash, devices: model.devices)
+            SidebarView(sizer: model.sizer, cleaner: model.cleaner, trash: model.trash, devices: model.devices)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 225, max: 300)
         } detail: {
             detailArea
@@ -37,9 +37,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: $model.showWelcome) {
             WelcomeView().environmentObject(model)
-        }
-        .sheet(isPresented: $model.showUpgrade) {
-            UpgradeView(license: model.license).environmentObject(model)
         }
         .sheet(isPresented: $model.showFullDiskAccessGuide) {
             FullDiskAccessGuide().environmentObject(model)

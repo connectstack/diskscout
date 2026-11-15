@@ -82,7 +82,7 @@ struct SafetyAssessment: Equatable, Hashable {
 
 enum SafetyClassifier {
 
-    static let home: String = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+    static let home: String = AppPaths.home.standardizedFileURL.path
 
     // MARK: - Public
 

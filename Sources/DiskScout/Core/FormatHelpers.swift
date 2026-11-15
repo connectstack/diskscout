@@ -1,6 +1,24 @@
 import Foundation
 import SwiftUI
 
+/// Where the user's home folder is. Debug builds can swap in an invented one: `--sample-home`
+/// builds a sample home with made-up caches, projects and photos, and `DISKSCOUT_HOME=<folder>`
+/// points at any folder. Screenshots and UI work then never show anyone's real files.
+enum AppPaths {
+    static let home: URL = {
+        #if DEBUG
+        if CommandLine.arguments.contains("--sample-home") { return SampleHome.prepare() }
+        if let path = ProcessInfo.processInfo.environment["DISKSCOUT_HOME"], !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        #endif
+        return FileManager.default.homeDirectoryForCurrentUser
+    }()
+
+    /// True when debug builds are using an invented home instead of the real one.
+    static var isSample: Bool { home.standardizedFileURL != FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL }
+}
+
 enum ByteFormat {
     static let formatter: ByteCountFormatter = {
         let f = ByteCountFormatter()

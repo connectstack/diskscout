@@ -3,7 +3,6 @@ import AppKit
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
-    @ObservedObject var license: LicenseManager
 
     var body: some View {
         TabView {
@@ -11,8 +10,6 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             ExclusionsSettings(settings: settings)
                 .tabItem { Label("Exclusions", systemImage: "eye.slash") }
-            LicenseSettings(license: license)
-                .tabItem { Label("License", systemImage: "key") }
         }
         .frame(width: 520, height: 360)
     }
@@ -79,53 +76,5 @@ private struct ExclusionsSettings: View {
             }
         }
         .padding(16)
-    }
-}
-
-struct LicenseSettings: View {
-    @ObservedObject var license: LicenseManager
-    @State private var key = ""
-    @State private var message: String?
-    @State private var ok = false
-
-    var body: some View {
-        Form {
-            Section("Status") {
-                switch license.status {
-                case .licensed(let info):
-                    LabeledContent("License", value: "DiskScout Pro")
-                    LabeledContent("Registered to", value: info.email)
-                    LabeledContent("Issued", value: DateFormat.string(info.issued))
-                    if let x = info.expires { LabeledContent("Expires", value: DateFormat.string(x)) }
-                    Button("Deactivate on this Mac", role: .destructive) { license.deactivate() }
-                case .trial(let days):
-                    LabeledContent("License", value: "Trial — \(days) day\(days == 1 ? "" : "s") left")
-                case .expired:
-                    LabeledContent("License", value: "Trial ended")
-                }
-            }
-            if !license.status.isLicensed {
-                Section("Activate") {
-                    TextField("License key", text: $key, prompt: Text("Gumroad key or DS1.… key"))
-                        .font(.system(.body, design: .monospaced))
-                    HStack {
-                        Button("Activate") {
-                            Task {
-                                switch await license.activate(key) {
-                                case .success: message = "Activated. Thank you!"; ok = true
-                                case .failure(let e): message = e.localizedDescription; ok = false
-                                }
-                            }
-                        }
-                        .disabled(key.isEmpty)
-                        Button("Buy a license…") { NSWorkspace.shared.open(LicenseManager.purchaseURL) }
-                    }
-                    if let message {
-                        Text(message).font(.caption).foregroundStyle(ok ? SafetyLevel.safe.color : SafetyLevel.protected.color)
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
     }
 }

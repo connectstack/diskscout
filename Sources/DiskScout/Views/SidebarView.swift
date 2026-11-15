@@ -28,7 +28,7 @@ enum SidebarSelection: Hashable {
 
 enum QuickLocations {
     static let all: [SidebarLocation] = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = AppPaths.home
         func loc(_ name: String, _ icon: String, _ color: Color, _ url: URL, _ section: SidebarLocation.Section) -> SidebarLocation {
             SidebarLocation(id: url.path, name: name, systemImage: icon, color: color, url: url, section: section)
         }
@@ -67,7 +67,6 @@ struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var sizer: SidebarSizer
     @ObservedObject var cleaner: CleanupScanner
-    @ObservedObject var license: LicenseManager
     @ObservedObject var trash: TrashManager
     @ObservedObject var devices: DeviceMonitor
 
@@ -168,50 +167,8 @@ struct SidebarView: View {
                     BytesText(bytes: trash.lifetimeFreed, font: .caption.weight(.semibold))
                 }
             }
-            licensePill
         }
         .padding(12)
-    }
-
-    @ViewBuilder
-    private var licensePill: some View {
-        switch license.status {
-        case .licensed(let info):
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.seal.fill").foregroundStyle(SafetyLevel.safe.color)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("DiskScout Pro").font(.caption.weight(.semibold))
-                    Text(info.email).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer()
-            }
-        case .trial(let days):
-            Button { model.showUpgrade = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "clock.badge.checkmark").foregroundStyle(.secondary)
-                    Text("Trial · \(days) day\(days == 1 ? "" : "s") left").font(.caption)
-                    Spacer()
-                    Text("Upgrade").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
-                }
-                .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.subtleFill))
-            }
-            .buttonStyle(.plain)
-        case .expired:
-            Button { model.showUpgrade = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "lock.fill").foregroundStyle(SafetyLevel.caution.color)
-                    Text("Trial ended").font(.caption)
-                    Spacer()
-                    Text("Unlock").font(.caption.weight(.semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(Color.accentColor))
-                }
-                .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 8).fill(SafetyLevel.caution.color.opacity(0.12)))
-            }
-            .buttonStyle(.plain)
-        }
     }
 }
 

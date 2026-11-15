@@ -164,7 +164,7 @@ final class CleanupScanner: ObservableObject {
         }
 
         task = Task.detached(priority: .userInitiated) { [weak self] in
-            let home = FileManager.default.homeDirectoryForCurrentUser
+            let home = AppPaths.home
             let installed = InstalledApps.snapshot()
             for category in CleanupCategory.allCases {
                 if Task.isCancelled { break }
@@ -514,7 +514,7 @@ struct InstalledApps: @unchecked Sendable {
         var ids = Set<String>()
         var names: [String: String] = [:]
         let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
+        let home = AppPaths.home
         var roots = ["/Applications", "/System/Applications", "/System/Applications/Utilities", "/Applications/Utilities",
                      home.appendingPathComponent("Applications").path, "/System/Library/CoreServices", "/Library/Application Support"]
         // Setapp, Homebrew casks, etc.

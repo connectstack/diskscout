@@ -83,7 +83,6 @@ final class AppModel: ObservableObject {
     let sizer = SidebarSizer()
     let cleaner = CleanupScanner()
     let trash = TrashManager()
-    let license = LicenseManager()
     let settings = AppSettings()
     let devices = DeviceMonitor()
     /// WhatsApp, Messages, Instagram, Notes, Calls and Safari. Works with or without an iPhone attached.
@@ -106,7 +105,6 @@ final class AppModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var sortOrder: SortOrder = .size
     @Published var showWelcome: Bool = false
-    @Published var showUpgrade: Bool = false
     @Published var showHistory: Bool = false
     @Published var hasFullDiskAccess: Bool = true
     @Published var fdaBannerDismissed: Bool = false
@@ -142,7 +140,7 @@ final class AppModel: ObservableObject {
         // Views observe the model; re-publish whenever any sub-model changes.
         let publishers: [ObservableObjectPublisher] = [
             engine.objectWillChange, cleaner.objectWillChange, trash.objectWillChange,
-            license.objectWillChange, settings.objectWillChange, sizer.objectWillChange,
+            settings.objectWillChange, sizer.objectWillChange,
             devices.objectWillChange
         ]
         for p in publishers {
@@ -163,7 +161,15 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated { self?.personalData.close() }
             Self.purgeDevicePreviews()
         }
+        #if DEBUG
+        if CommandLine.arguments.contains("--sample-device") { devices.showSample() } else { devices.start() }
+        if let i = CommandLine.arguments.firstIndex(of: "--appearance"), i + 1 < CommandLine.arguments.count {
+            NSApp.appearance = NSAppearance(named: CommandLine.arguments[i + 1] == "light" ? .aqua : .darkAqua)
+        }
+        if CommandLine.arguments.contains("--sample-home") { fdaBannerDismissed = true }
+        #else
         devices.start()
+        #endif
         if !cleaner.hasScanned { cleaner.scan() }
         applyLaunchArguments()
     }
@@ -238,7 +244,7 @@ final class AppModel: ObservableObject {
                 try? out.write(toFile: NSTemporaryDirectory() + "diskscout-layout.txt", atomically: true, encoding: .utf8)
             }
         }
-        if args.contains("--personal-data") || args.contains("--demo-mac-data") || args.contains("--demo-backup") || args.contains("--demo-no-backup") {
+        if ["--personal-data", "--demo-mac-data", "--demo-backup", "--demo-no-backup", "--demo-instagram", "--demo-instagram-html"].contains(where: args.contains) {
             // Invented sample data only: a sample home folder (WhatsApp for Mac, Messages, Notes, calls,
             // Safari), a sample Instagram export, and optionally an encrypted sample backup.
             let tmp = FileManager.default.temporaryDirectory
@@ -283,7 +289,7 @@ final class AppModel: ObservableObject {
                 if args.contains("--demo-instagram") { s.openInstagramExport(export) }
                 if args.contains("--demo-instagram-html") {
                     // The default format Instagram sends: HTML pages, not JSON.
-                    let html = tmp.appendingPathComponent("DiskScout-sample-instagram-html", isDirectory: true)
+                    let html = tmp.appendingPathComponent("instagram-jamie.rivera-2026-11-13", isDirectory: true)
                     try? FileManager.default.removeItem(at: html)
                     try? BackupFixture.makeInstagramHTMLExport(in: html)
                     s.openInstagramExport(html)
@@ -353,7 +359,7 @@ final class AppModel: ObservableObject {
                 if let d = selectedDevice {
                     let apps = d.sortedApps(filter: "")
                     d.inspectedAppID = (apps.first { $0.tip != nil } ?? apps.first)?.id
-                    d.selectedAppIDs = Set(apps.prefix(2).map(\.id))
+                    if args.contains("--demo-device-select") { d.selectedAppIDs = Set(apps.prefix(2).map(\.id)) }
                     switch d.tab {
                     case .photos:
                         while !d.cameraRollLoaded { try? await Task.sleep(nanoseconds: 200_000_000) }
@@ -422,7 +428,7 @@ final class AppModel: ObservableObject {
         guard nm.assessment.level == .safe, nm.assessment.regenerates else { log("FAIL node_modules should be safe/regenerable"); exit(1) }
 
         requestTrash(nodes: [nm])
-        guard let plan = trashPlan else { log("FAIL no plan (license gate?)"); exit(1) }
+        guard let plan = trashPlan else { log("FAIL no plan"); exit(1) }
         log("plan: \(plan.deletable.count) deletable, \(plan.totalSize) bytes")
         let outcome = await perform(plan) { _, _ in }
         finish(outcome)
@@ -596,10 +602,9 @@ final class AppModel: ObservableObject {
 
     /// Shows the step-by-step Full Disk Access guide (closing any sheet that's in the way first).
     func openFullDiskAccessSettings() {
-        let hadSheet = trashPlan != nil || mediaTrashPlan != nil || showWelcome || showUpgrade
+        let hadSheet = trashPlan != nil || mediaTrashPlan != nil || showWelcome
         dismissPlan()
         showWelcome = false
-        showUpgrade = false
         if hadSheet {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 450_000_000)
@@ -814,7 +819,6 @@ final class AppModel: ObservableObject {
 
     func requestTrash(nodes: [FileNode]) {
         guard !nodes.isEmpty else { return }
-        guard gateCleaning() else { return }
         let candidates = nodes.map {
             TrashCandidate(url: $0.url, name: $0.name, size: $0.size, assessment: $0.assessment,
                            isDirectory: $0.isDirectory, action: .moveToTrash, nodeID: $0.id)
@@ -838,7 +842,6 @@ final class AppModel: ObservableObject {
     /// Trash flow started from a media gallery window.
     func requestTrash(media items: [MediaItem]) {
         guard !items.isEmpty else { return }
-        guard gateCleaning() else { return }
         let candidates = items.map {
             TrashCandidate(url: $0.url, name: $0.name, size: $0.size, assessment: $0.assessment,
                            isDirectory: $0.isPackage, action: .moveToTrash, nodeID: nil)
@@ -882,7 +885,6 @@ final class AppModel: ObservableObject {
 
     func requestDeviceDelete(_ apps: [IOSApp], on device: IOSDevice) {
         guard !apps.isEmpty else { return }
-        guard gateCleaning() else { return }
         deviceDeletePlan = DeviceDeletePlan(device: device, apps: apps.sorted { $0.totalSize > $1.totalSize })
     }
 
@@ -1026,7 +1028,7 @@ final class AppModel: ObservableObject {
 
     func deleteLogs(_ files: [DeviceFile], on device: IOSDevice) {
         let logs = files.filter { $0.domain == .crashLogs }
-        guard !logs.isEmpty, gateCleaning() else { return }
+        guard !logs.isEmpty else { return }
         Task {
             let r = await device.removeLogs(logs)
             let bytes = r.removed.reduce(0) { $0 + $1.size }
@@ -1040,7 +1042,6 @@ final class AppModel: ObservableObject {
     }
 
     func clearCrashLogs(on device: IOSDevice) {
-        guard gateCleaning() else { return }
         Task {
             do {
                 let result = try await device.clearCrashLogs()
@@ -1060,7 +1061,6 @@ final class AppModel: ObservableObject {
 
     func requestCleanup(items: [CleanupItem]) {
         guard !items.isEmpty else { return }
-        guard gateCleaning() else { return }
         let candidates = items.map {
             TrashCandidate(url: $0.url, name: $0.title, size: $0.size, assessment: $0.assessment,
                            isDirectory: $0.isDirectory, action: $0.action, nodeID: nil)
@@ -1070,12 +1070,6 @@ final class AppModel: ObservableObject {
 
     func requestCleanup(ids: Set<String>) {
         requestCleanup(items: cleaner.items.filter { ids.contains($0.id) })
-    }
-
-    private func gateCleaning() -> Bool {
-        if license.canClean { return true }
-        showUpgrade = true
-        return false
     }
 
     /// Executes a plan. Runs the file operations off the main thread and reports progress.

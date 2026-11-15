@@ -161,6 +161,17 @@ final class DeviceLink: @unchecked Sendable {
         _ = Unmanaged<AnyObject>.fromOpaque(ref).retain()
     }
 
+    #if DEBUG
+    /// A link to no device at all, behind the invented iPhone (`--sample-device`). Nothing calls through it.
+    init(sampleUDID: String, api: MobileDeviceAPI) {
+        self.api = api
+        self.ref = Unmanaged.passRetained(NSObject()).toOpaque()
+        self.udid = sampleUDID
+        self.isWiFi = false
+        self.queue = DispatchQueue(label: "DiskScout.device.sample", qos: .userInitiated)
+    }
+    #endif
+
     deinit {
         Unmanaged<AnyObject>.fromOpaque(ref).release()
     }

@@ -7,13 +7,10 @@ cd "$(dirname "$0")/.."
 VERSION="${VERSION:-2.0.0}"
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 BUNDLE_ID="${BUNDLE_ID:-com.diskscout.app}"
-PURCHASE_URL="${PURCHASE_URL:-https://diskscout.app/buy}"       # your Gumroad product page
-GUMROAD_PRODUCT_ID="${GUMROAD_PRODUCT_ID:-}"                   # enables in-app Gumroad key activation
 OUT="build"
 APP="$OUT/DiskScout.app"
 
 echo "▸ Building release binary (v$VERSION, build $BUILD)"
-[ -n "$GUMROAD_PRODUCT_ID" ] || echo "  note: GUMROAD_PRODUCT_ID not set — buyers will need DS1 keys until you rebuild with it"
 swift build -c release 2>&1 | tail -1
 BIN="$(swift build -c release --show-bin-path)/DiskScout"
 
@@ -47,9 +44,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
-  <key>NSHumanReadableCopyright</key><string>© 2026 DiskScout</string>
-  <key>DiskScoutPurchaseURL</key><string>$PURCHASE_URL</string>
-  <key>DiskScoutGumroadProductID</key><string>$GUMROAD_PRODUCT_ID</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 DiskScout contributors · Apache License 2.0</string>
   <key>NSAppleEventsUsageDescription</key><string>DiskScout asks Finder to empty the Trash, and to move items that macOS won\u2019t let DiskScout move itself (such as other apps\u2019 containers).</string>
   <key>NSDesktopFolderUsageDescription</key><string>DiskScout measures the size of files on your Desktop.</string>
   <key>NSDocumentsFolderUsageDescription</key><string>DiskScout measures the size of files in Documents.</string>

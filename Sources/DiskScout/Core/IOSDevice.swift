@@ -877,3 +877,81 @@ private let deviceNotificationCallback: MobileDeviceAPI.NotificationCallback = {
         break
     }
 }
+
+#if DEBUG
+// MARK: - Sample iPhone
+
+extension DeviceMonitor {
+    /// Shows an invented iPhone instead of watching for real ones (`--sample-device`).
+    func showSample() {
+        if let d = IOSDevice.sample() { devices = [d] }
+    }
+}
+
+extension IOSDevice {
+    /// An invented iPhone for screenshots and UI work: made-up apps, sizes and media. No real device,
+    /// and nothing is ever sent to one.
+    static func sample() -> IOSDevice? {
+        guard let api = MobileDeviceAPI.shared else { return nil }
+        let device = IOSDevice(link: DeviceLink(sampleUDID: "00008130-SAMPLE0000000000", api: api))
+        device.fillWithSampleData()
+        return device
+    }
+
+    private func fillWithSampleData() {
+        let MB: Int64 = 1_000_000
+        info = IOSDeviceInfo(name: "Jamie's iPhone", model: "iPhone 15 Pro", productType: "iPhone16,1", osVersion: "26.1",
+                             deviceClass: "iPhone", capacity: 128_000 * MB, free: 21_400 * MB)
+        // name, symbol, colours, app size, Documents & Data, shares files, groups, iCloud, saves to Photos
+        let list: [(String, String, String, Color, Color, Int64, Int64, Bool, [String], Bool, Bool)] = [
+            ("Lumen Camera", "camera.aperture", "com.example.lumen.camera", .purple, .pink, 310, 2_380, false, ["group.com.example.lumen"], true, true),
+            ("Chatter", "bubble.left.and.bubble.right.fill", "com.example.chatter", .green, .teal, 280, 1_940, false, ["group.com.example.chatter"], true, true),
+            ("StreamBox", "play.rectangle.fill", "com.example.streambox", .red, .orange, 360, 1_310, false, [], false, false),
+            ("Beatline", "music.note", "com.example.beatline", .pink, .red, 190, 1_120, false, [], true, false),
+            ("Trailhead Maps", "map.fill", "com.example.trailhead", .teal, .blue, 450, 820, false, [], true, false),
+            ("Fieldnotes", "note.text", "com.example.fieldnotes", .yellow, .orange, 60, 640, true, [], true, false),
+            ("Morning Digest", "newspaper.fill", "com.example.digest", .orange, .red, 140, 610, false, [], false, false),
+            ("Puzzle Peaks", "puzzlepiece.fill", "com.example.puzzlepeaks", .mint, .green, 910, 420, false, [], true, false),
+            ("Lumen Edit", "slider.horizontal.3", "com.example.lumen.edit", .indigo, .purple, 240, 380, false, ["group.com.example.lumen"], true, true),
+            ("Cartwheel", "bag.fill", "com.example.cartwheel", .orange, .yellow, 230, 300, false, [], false, false),
+            ("Pocket Wallet", "creditcard.fill", "com.example.pocketwallet", .indigo, .blue, 210, 240, false, [], true, false),
+            ("Wayfare", "car.fill", "com.example.wayfare", .gray, .black, 260, 150, false, [], false, false),
+            ("Keyring Authenticator", "lock.shield.fill", "com.example.keyring", .blue, .cyan, 40, 12, false, [], true, false),
+        ]
+        apps = list.map { IOSApp(id: $0.2, name: $0.0, version: "4.2", appSize: $0.5 * MB, dataSize: $0.6 * MB, fileSharing: $0.7,
+                                 groups: $0.8, usesICloud: $0.9, canSaveToPhotos: $0.10) }
+        icons = Dictionary(uniqueKeysWithValues: list.map { ($0.2, Self.sampleIcon($0.1, $0.3, $0.4)) })
+        media = DeviceMediaUsage(groups: [
+            DeviceMediaGroup(id: "photos", title: "Photos & videos", detail: "Camera roll originals", systemImage: "photo.on.rectangle.angled", color: FileCategory.photos.color, size: 38_200 * MB, files: 9_842),
+            DeviceMediaGroup(id: "photolibrary", title: "Photos library", detail: "Thumbnails, edits and the library database", systemImage: "square.stack.3d.up.fill", color: FileCategory.video.color, size: 6_100 * MB, files: 1_204),
+            DeviceMediaGroup(id: "music", title: "Music & podcasts", detail: "Songs and episodes synced or downloaded", systemImage: "music.note", color: FileCategory.audio.color, size: 2_300 * MB, files: 214),
+            DeviceMediaGroup(id: "downloads", title: "Downloads", detail: "Files left by system downloads", systemImage: "arrow.down.circle.fill", color: Color(red: 0.20, green: 0.78, blue: 0.45), size: 410 * MB, files: 18),
+            DeviceMediaGroup(id: "other", title: "Other media", detail: "Smaller system media folders", systemImage: "folder.fill", color: FileCategory.other.color, size: 820 * MB, files: 6),
+        ], files: 11_284, complete: true)
+        crashLogs = CrashLogSummary(files: 86, bytes: 6 * MB)
+        photoSources = [
+            PhotoSource(id: "com.example.lumen.camera", name: "Lumen Camera", systemImage: "app.fill", isApp: true, items: 1_284, bytes: 4_600 * MB),
+            PhotoSource(id: "com.example.chatter", name: "Chatter", systemImage: "app.fill", isApp: true, items: 2_931, bytes: 3_100 * MB),
+            PhotoSource(id: "com.example.lumen.edit", name: "Lumen Edit", systemImage: "app.fill", isApp: true, items: 212, bytes: 640 * MB),
+        ]
+        photoSourcesState = .ready
+        appsLoaded = true
+        phase = .ready
+    }
+
+    /// A simple app icon: a gradient square with a symbol.
+    private static func sampleIcon(_ symbol: String, _ top: Color, _ bottom: Color) -> NSImage {
+        let size = CGSize(width: 120, height: 120)
+        return NSImage(size: size, flipped: false) { rect in
+            let path = NSBezierPath(roundedRect: rect, xRadius: 27, yRadius: 27)
+            NSGradient(starting: NSColor(top), ending: NSColor(bottom))?.draw(in: path, angle: -90)
+            let config = NSImage.SymbolConfiguration(pointSize: 54, weight: .semibold).applying(.init(paletteColors: [.white]))
+            if let glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+                let g = glyph.size
+                glyph.draw(in: CGRect(x: (rect.width - g.width) / 2, y: (rect.height - g.height) / 2, width: g.width, height: g.height))
+            }
+            return true
+        }
+    }
+}
+#endif
