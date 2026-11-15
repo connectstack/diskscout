@@ -18,6 +18,14 @@ struct SidebarLocation: Identifiable, Hashable {
     }
 }
 
+/// What the sidebar list has selected: a folder location, or a connected iPhone/iPad.
+enum SidebarSelection: Hashable {
+    case location(SidebarLocation)
+    case device(String)
+    /// Messages & Notes: WhatsApp, Messages, Instagram, Notes, Calls, Safari.
+    case personalData
+}
+
 enum QuickLocations {
     static let all: [SidebarLocation] = {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -61,10 +69,55 @@ struct SidebarView: View {
     @ObservedObject var cleaner: CleanupScanner
     @ObservedObject var license: LicenseManager
     @ObservedObject var trash: TrashManager
+    @ObservedObject var devices: DeviceMonitor
+
+    private var selectionBinding: Binding<SidebarSelection?> {
+        Binding(
+            get: {
+                if model.showingPersonalData { return .personalData }
+                if let id = model.selectedDeviceID { return .device(id) }
+                return model.selectedLocation.map { .location($0) }
+            },
+            set: { sel in
+                switch sel {
+                case .device(let id)?:
+                    if let d = devices.device(id: id) { model.select(device: d) }
+                case .personalData?:
+                    model.selectPersonalData()
+                case .location(let loc)?:
+                    model.select(location: loc)
+                case nil:
+                    model.select(location: nil)
+                }
+            }
+        )
+    }
+
+    private var devicesSection: some View {
+        Section {
+            ForEach(devices.devices) { d in
+                DeviceSidebarRow(device: d).tag(SidebarSelection.device(d.id))
+            }
+            if devices.devices.isEmpty {
+                HStack(spacing: 9) {
+                    Image(systemName: "cable.connector")
+                        .font(.system(size: 11))
+                        .frame(width: 22)
+                    Text("Connect an iPhone or iPad to clean it")
+                        .font(.system(size: 11.5))
+                        .lineLimit(2)
+                }
+                .foregroundStyle(.secondary)
+                .selectionDisabled()
+            }
+        } header: {
+            Text("Devices")
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            List(selection: Binding(get: { model.selectedLocation }, set: { model.select(location: $0) })) {
+            List(selection: selectionBinding) {
                 ForEach(SidebarLocation.Section.allCases, id: \.self) { section in
                     Section {
                         ForEach(QuickLocations.itemsIn(section)) { loc in
@@ -75,10 +128,23 @@ struct SidebarView: View {
                                 isUnreadable: sizer.unreadable.contains(loc.url),
                                 highlight: loc.isSmartClean
                             )
-                            .tag(loc)
+                            .tag(SidebarSelection.location(loc))
+                        }
+                        if section == .tools {
+                            HStack(spacing: 9) {
+                                IconTile(systemImage: "bubble.left.and.text.bubble.right.fill", color: Color(red: 0.20, green: 0.55, blue: 1.0), size: 22)
+                                Text("Messages & Notes").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                                Spacer(minLength: 6)
+                            }
+                            .padding(.vertical, 1)
+                            .tag(SidebarSelection.personalData)
+                            .help("WhatsApp, Messages, Instagram, Notes, calls and Safari, read on this Mac")
                         }
                     } header: {
                         if section != .tools { Text(section.rawValue) }
+                    }
+                    if section == .mac && devices.isAvailable {
+                        devicesSection
                     }
                 }
             }

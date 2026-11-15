@@ -177,8 +177,12 @@ final class LicenseManager: ObservableObject {
         }
         let http = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard json["success"] as? Bool == true, let purchase = json["purchase"] as? [String: Any] else {
-            if http == 404 || (json["message"] as? String)?.localizedCaseInsensitiveContains("not") == true {
+            if http == 404 {
                 return .failure(.rejected("Gumroad doesn't recognise this key for DiskScout. Copy it from your Gumroad receipt or library."))
+            }
+            // Rate limits, timeouts and server errors say nothing about the key: never revoke on those.
+            if http == 429 || http == 408 || http >= 500 || http == 0 {
+                return .failure(.network("Gumroad is busy (\(http)). Try again in a moment."))
             }
             return .failure(.rejected((json["message"] as? String) ?? "Gumroad rejected this key."))
         }

@@ -67,7 +67,9 @@ struct ReviewSheet: View {
                 Image(systemName: "trash.fill").font(.system(size: 20)).foregroundStyle(SafetyLevel.protected.color)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(plan.includesEmptyTrash && plan.deletable.count == 1 ? "Empty the Trash?" : "Move \(plan.deletable.count) item\(plan.deletable.count == 1 ? "" : "s") to the Trash?")
+                Text(plan.includesEmptyTrash
+                     ? (plan.deletable.count == 1 ? "Empty the Trash?" : "Move \(plan.deletable.count - 1) item\(plan.deletable.count == 2 ? "" : "s") to the Trash, then empty it?")
+                     : "Move \(plan.deletable.count) item\(plan.deletable.count == 1 ? "" : "s") to the Trash?")
                     .font(.system(size: 16, weight: .bold))
                 HStack(spacing: 8) {
                     Text("Frees \(plan.totalSize.bytesString)").font(.system(size: 12, weight: .semibold)).foregroundStyle(SafetyLevel.safe.color)
@@ -108,9 +110,10 @@ struct ReviewSheet: View {
                 Button {
                     Task { await run() }
                 } label: {
-                    Label(plan.includesEmptyTrash && plan.deletable.count == 1 ? "Empty Trash" : "Move to Trash", systemImage: "trash")
+                    Label(plan.includesEmptyTrash ? (plan.deletable.count == 1 ? "Empty Trash" : "Move & Empty Trash") : "Move to Trash", systemImage: "trash")
                 }
-                .keyboardShortcut(.defaultAction)
+                // Return confirms only what Undo can reverse. Emptying the Trash needs a click.
+                .keyboardShortcut(plan.includesEmptyTrash ? nil : KeyboardShortcut.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .tint(SafetyLevel.protected.color)
                 .disabled(plan.deletable.isEmpty || (plan.hasCaution && !acknowledgedCaution))

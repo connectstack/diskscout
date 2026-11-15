@@ -96,9 +96,14 @@ final class CleanupScanner: ObservableObject {
     @Published private(set) var elapsed: TimeInterval = 0
     @Published var hasScanned = false
 
+    /// The last scan was stopped before it finished, so the list may be incomplete.
+    @Published private(set) var wasStopped = false
+
     private var task: Task<Void, Never>?
     private var ticker: Task<Void, Never>?
     private var startedAt = Date()
+    /// Identifies the running scan, so a cancelled one can't touch the state of its replacement.
+    private var generation = 0
 
     // MARK: - Aggregates
 
@@ -132,6 +137,8 @@ final class CleanupScanner: ObservableObject {
     func cancel() {
         task?.cancel()
         ticker?.cancel()
+        generation += 1
+        if isScanning { wasStopped = true }
         isScanning = false
         currentCategory = nil
     }
@@ -140,6 +147,8 @@ final class CleanupScanner: ObservableObject {
 
     func scan() {
         cancel()
+        let scanID = generation
+        wasStopped = false
         isScanning = true
         hasScanned = true
         items = []
@@ -159,12 +168,12 @@ final class CleanupScanner: ObservableObject {
             let installed = InstalledApps.snapshot()
             for category in CleanupCategory.allCases {
                 if Task.isCancelled { break }
-                await MainActor.run { [weak self] in self?.currentCategory = category }
+                await MainActor.run { [weak self] in if self?.generation == scanID { self?.currentCategory = category } }
                 let candidates = Self.candidates(for: category, home: home, installed: installed)
                 let sized = await Self.size(candidates)
                 if Task.isCancelled { break }
                 await MainActor.run { [weak self] in
-                    guard let self, self.isScanning else { return }
+                    guard let self, self.generation == scanID, self.isScanning else { return }
                     withAnimation(.spring(duration: 0.5)) {
                         self.items.append(contentsOf: sized)
                         self.completed.insert(category)
@@ -172,7 +181,7 @@ final class CleanupScanner: ObservableObject {
                 }
             }
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self, self.generation == scanID else { return }   // stopped or superseded
                 self.isScanning = false
                 self.currentCategory = nil
                 self.lastScan = Date()

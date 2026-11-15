@@ -44,6 +44,14 @@ extension View {
     func card(padding: CGFloat = 14, tint: Color? = nil) -> some View {
         modifier(CardModifier(padding: padding, tint: tint))
     }
+
+    /// Fills the space it's given and never asks for more. A split-view column takes its minimum
+    /// size from its content, measured with no room at all, and wrapping text measured that way is
+    /// thousands of points tall. The window then lays itself out that tall and everything but the
+    /// centre is off-screen. This stops any screen from doing that.
+    func layoutContained() -> some View {
+        frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+    }
 }
 
 // MARK: - Badges & tiles

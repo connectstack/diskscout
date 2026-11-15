@@ -39,9 +39,13 @@ Browse like Finder with a size bar on every row, or switch to the treemap for th
 
 Find exact duplicates and keep the one you choose. List the largest files anywhere. Find things you haven't opened in years.
 
-**Nothing is ever deleted outright**
+**Clean your iPhone and iPad too**
 
-Every removal goes through a review sheet that lists each item with its reason. Items are moved to the Trash, never erased, and a single click puts a whole batch back. A history window remembers everything DiskScout moved.
+Plug in an iPhone and it shows up in the sidebar. See what's filling it, how big every app is and how much each one has stored, then delete the apps you don't need. Browse the camera roll biggest-first (long videos are usually the culprit), look through the iPhone's folders and crash logs, and copy anything to your Mac before you delete it on the phone. Apps that may hold chats, authenticator codes, wallets or your documents are flagged Caution, and DiskScout points out apps that can free space themselves (WhatsApp, Telegram, Spotify…). It uses the same Apple framework Finder uses to sync, so there's nothing extra to install.
+
+**Nothing on your Mac is ever deleted outright**
+
+Every removal goes through a review sheet that lists each item with its reason. Items are moved to the Trash, never erased, and a single click puts a whole batch back. A history window remembers everything DiskScout moved. iPhones have no Trash, so deleting an app there is permanent, and the review sheet says so before anything happens.
 
 **Private by design**
 
@@ -51,7 +55,7 @@ DiskScout never sends your file names or folder contents anywhere. The only netw
 
 - A one-time license for all the Macs you personally use.
 - Free updates for the whole 2.x series.
-- A 14-day free trial is built in, so you can try before buying. Scanning, browsing and previews stay free forever; only moving items to the Trash needs a license after the trial.
+- A 14-day free trial is built in, so you can try before buying. Scanning, browsing and previews stay free forever; only cleaning (moving items to the Trash, deleting iPhone apps) needs a license after the trial.
 
 ## Requirements
 

@@ -21,6 +21,9 @@ struct DiskScoutApp: App {
                 .onChange(of: model.mediaRequest) { _, url in
                     if let url { openWindow(id: "media", value: url); model.mediaRequest = nil }
                 }
+                .onChange(of: model.deviceMediaRequest) { _, req in
+                    if let req { openWindow(id: "device-media", value: req); model.deviceMediaRequest = nil }
+                }
         }
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1240, height: 780)
@@ -34,6 +37,13 @@ struct DiskScoutApp: App {
         WindowGroup("Media", id: "media", for: URL.self) { $url in
             if let url {
                 MediaGalleryView(root: url).environmentObject(model)
+            }
+        }
+        .defaultSize(width: 1000, height: 700)
+
+        WindowGroup("iPhone Media", id: "device-media", for: DeviceMediaRequest.self) { $request in
+            if let request {
+                DeviceMediaGalleryView(devices: model.devices, request: request).environmentObject(model)
             }
         }
         .defaultSize(width: 1000, height: 700)
@@ -63,12 +73,13 @@ struct DiskScoutApp: App {
             Button("Show in Finder") { model.revealSelection() }.keyboardShortcut("r", modifiers: [.command, .shift])
             Button("Show Media Inside") { model.showMediaForSelection() }.keyboardShortcut("m", modifiers: [.command, .shift])
             Button("Enclosing Folder") { model.engine.goUp() }.keyboardShortcut(.upArrow, modifiers: .command)
+                .disabled(model.macScanHidden)
             Divider()
             Button("Move to Trash…") { model.requestTrashSelection() }.keyboardShortcut(.delete, modifiers: .command)
         }
         CommandGroup(after: .sidebar) {
             ForEach(ViewMode.allCases) { m in
-                Button(m.rawValue) { withAnimation(.snappyUI) { model.mode = m } }
+                Button(m.rawValue) { model.showMode(m) }
                     .keyboardShortcut(m.shortcut, modifiers: .command)
                     .disabled(m.needsScan && model.engine.root == nil)
             }

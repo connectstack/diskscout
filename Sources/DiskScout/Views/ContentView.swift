@@ -6,21 +6,34 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(sizer: model.sizer, cleaner: model.cleaner, license: model.license, trash: model.trash)
+            SidebarView(sizer: model.sizer, cleaner: model.cleaner, license: model.license, trash: model.trash, devices: model.devices)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 225, max: 300)
         } detail: {
-            detail
+            detailArea
+                .layoutContained()
                 .navigationTitle("DiskScout")
                 .toolbar { ToolbarItems() }
                 .inspector(isPresented: $model.showInspector) {
-                    InspectorPane(engine: model.engine)
-                        .inspectorColumnWidth(min: 250, ideal: 285, max: 380)
+                    Group {
+                        if model.showingPersonalData {
+                            BackupInspector()
+                        } else if model.selectedDeviceID != nil {
+                            DeviceInspectorPane()
+                        } else {
+                            InspectorPane(engine: model.engine)
+                        }
+                    }
+                    .layoutContained()
+                    .inspectorColumnWidth(min: 250, ideal: 285, max: 380)
                 }
         }
         .frame(minWidth: 1080, minHeight: 680)
-        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Filter this folder")
+        .searchable(text: $model.searchText, placement: .toolbar, prompt: model.showingPersonalData ? DeviceTab.backup.searchPrompt : (model.selectedDevice?.tab.searchPrompt ?? "Filter this folder"))
         .sheet(item: $model.trashPlan) { plan in
             ReviewSheet(plan: plan).environmentObject(model)
+        }
+        .sheet(item: $model.deviceDeletePlan) { plan in
+            DeviceDeleteSheet(plan: plan).environmentObject(model)
         }
         .sheet(isPresented: $model.showWelcome) {
             WelcomeView().environmentObject(model)
@@ -38,6 +51,31 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.recheckFullDiskAccess()
             model.refreshDisk()
+        }
+    }
+
+    @ViewBuilder
+    private var detailArea: some View {
+        if model.showingPersonalData {
+            VStack(spacing: 0) {
+                PersonalDataView()
+                Divider()
+                StatusBar()
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+        } else if model.selectedDeviceID != nil {
+            VStack(spacing: 0) {
+                if let device = model.selectedDevice {
+                    DeviceDetail(device: device).id(device.id)
+                } else {
+                    DeviceDisconnectedView()
+                }
+                Divider()
+                StatusBar()
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            detail
         }
     }
 
@@ -125,13 +163,13 @@ struct ToolbarItems: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
             Button { model.engine.goBack() } label: { Image(systemName: "chevron.left") }
-                .disabled(!model.engine.canGoBack)
+                .disabled(model.macScanHidden || !model.engine.canGoBack)
                 .help("Back")
             Button { model.engine.goForward() } label: { Image(systemName: "chevron.right") }
-                .disabled(!model.engine.canGoForward)
+                .disabled(model.macScanHidden || !model.engine.canGoForward)
                 .help("Forward")
             Button { model.engine.goUp() } label: { Image(systemName: "arrow.up.to.line") }
-                .disabled(model.engine.current?.parent == nil)
+                .disabled(model.macScanHidden || model.engine.current?.parent == nil)
                 .help("Enclosing folder")
         }
         ToolbarItemGroup(placement: .primaryAction) {
@@ -142,18 +180,22 @@ struct ToolbarItems: ToolbarContent {
                     .help("Stop scanning")
             } else {
                 Button { model.rescan() } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                    .disabled(model.engine.root == nil && model.mode != .smartClean)
+                    .disabled(model.engine.root == nil && model.mode != .smartClean && model.selectedDevice == nil)
                     .help("Rescan (⌘R)")
             }
             Button { model.quickLookSelection() } label: { Label("Quick Look", systemImage: "eye") }
-                .disabled(model.selection.isEmpty && model.cleanupInspected == nil)
+                .disabled(model.selectedDeviceID != nil || model.showingPersonalData || (model.selection.isEmpty && model.cleanupInspected == nil))
                 .help("Quick Look (Space)")
             Button { model.revealSelection() } label: { Label("Show in Finder", systemImage: "magnifyingglass") }
-                .disabled(model.engine.current == nil && model.cleanupInspected == nil)
+                .disabled(model.selectedDeviceID != nil || model.showingPersonalData || (model.engine.current == nil && model.cleanupInspected == nil))
                 .help("Show in Finder")
-            Button { model.requestTrashSelection() } label: { Label("Move to Trash", systemImage: "trash") }
-                .disabled(model.selection.isEmpty && model.selectedCleanupIDs.isEmpty)
-                .help("Move selection to Trash (⌘⌫)")
+            if let device = model.selectedDevice {
+                DeviceTrashToolbarButton(device: device)
+            } else {
+                Button { model.requestTrashSelection() } label: { Label("Move to Trash", systemImage: "trash") }
+                    .disabled(model.showingPersonalData || (model.selection.isEmpty && model.selectedCleanupIDs.isEmpty))
+                    .help("Move selection to Trash (⌘⌫)")
+            }
             Button { withAnimation(.snappyUI) { model.showInspector.toggle() } } label: { Label("Inspector", systemImage: "sidebar.right") }
                 .help("Toggle inspector (⌥⌘I)")
         }
@@ -167,7 +209,12 @@ struct StatusBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if model.engine.isScanning {
+            if model.showingPersonalData {
+                Image(systemName: "hand.raised.fill").foregroundStyle(.tint)
+                Text("Messages & Notes · read on this Mac, never uploaded")
+            } else if let device = model.selectedDevice {
+                DeviceStatusText(device: device)
+            } else if model.engine.isScanning {
                 ProgressView().controlSize(.small)
                 Text("Scanning · \(model.engine.scannedItems.formatted()) items · \(model.engine.scannedBytes.bytesString)")
                     .monospacedDigit()
@@ -204,7 +251,7 @@ struct StatusBar: View {
                 Text("Ready")
             }
             Spacer()
-            if !model.selection.isEmpty {
+            if !model.selection.isEmpty && model.selectedDeviceID == nil && !model.showingPersonalData {
                 let nodes = model.nodes(for: model.selection)
                 Text("\(nodes.count) selected · \(nodes.reduce(0) { $0 + $1.size }.bytesString)")
                     .monospacedDigit()

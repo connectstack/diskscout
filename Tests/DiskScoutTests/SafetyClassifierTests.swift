@@ -33,6 +33,33 @@ final class SafetyClassifierTests: XCTestCase {
         XCTAssertEqual(level(home + "/.Trash/old.zip", dir: false), .safe)
     }
 
+    func testThingsThatOnlyLookLikeJunkAreNotSafe() {
+        // Emptying the Trash is permanent, so the Trash itself is never bulk-selected as Safe.
+        XCTAssertEqual(level(home + "/.Trash"), .review)
+        // Tool folders hold the tool and your settings; only their caches are Safe.
+        XCTAssertEqual(level(home + "/.bun"), .review)
+        XCTAssertEqual(level(home + "/.bun/bin/bun", dir: false), .review)
+        XCTAssertEqual(level(home + "/.bun/install/cache"), .safe)
+        XCTAssertEqual(level(home + "/.yarn"), .review)
+        XCTAssertEqual(level(home + "/.gradle"), .review)
+        XCTAssertEqual(level(home + "/.gradle/gradle.properties", dir: false), .review)
+        XCTAssertEqual(level(home + "/.gradle/caches/modules-2"), .safe)
+        XCTAssertEqual(level(home + "/.pnpm-store"), .safe)
+        // Logs, partial downloads and editor swap files in your own folders may be yours.
+        XCTAssertEqual(level(home + "/Documents/lab/run-42.log", dir: false), .review)
+        XCTAssertEqual(level(home + "/Downloads/movie.mkv.part", dir: false), .review)
+        XCTAssertEqual(level(home + "/Documents/thesis.tex.swp", dir: false), .review)
+        XCTAssertEqual(level(home + "/Documents/app.crash", dir: false), .safe)
+        // A folder that merely shares a name with build products isn't one.
+        XCTAssertNotEqual(level(home + "/Documents/Pods"), .safe)
+        XCTAssertNotEqual(level(home + "/Documents/venv/notes.txt", dir: false), .safe)
+        // The real locations behind /tmp, /var and /etc are as protected as their aliases.
+        XCTAssertEqual(level("/private/var"), .protected)
+        XCTAssertEqual(level("/private/tmp"), .protected)
+        XCTAssertEqual(level("/tmp"), .protected)
+        XCTAssertEqual(level("/private/tmp/some-scratch-file", dir: false), .safe)
+    }
+
     func testAppDataIsCaution() {
         XCTAssertEqual(level(home + "/Library/Application Support/Foo"), .caution)
         XCTAssertEqual(level(home + "/Library/Containers/com.foo.bar"), .caution)

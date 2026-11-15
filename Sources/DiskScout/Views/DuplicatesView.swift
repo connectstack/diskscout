@@ -28,7 +28,14 @@ struct DuplicatesView: View {
         .onChange(of: engine.current?.id) { _, _ in
             finder.cancel()
             finder.groups = []
+            finder.lastScannedRootID = nil
             marked = []
+        }
+        // After a trash (or an undo), what's on screen must match what's on disk.
+        .onChange(of: model.trashPlan == nil) { _, closed in
+            guard closed else { return }
+            finder.pruneMissing()
+            marked.formIntersection(Set(finder.groups.flatMap(\.files).map(\.id)))
         }
     }
 

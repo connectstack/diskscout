@@ -16,7 +16,7 @@ struct SmartCleanView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     summary
-                    if cleaner.items.isEmpty && !cleaner.isScanning && cleaner.hasScanned {
+                    if cleaner.items.isEmpty && !cleaner.isScanning && cleaner.hasScanned && !cleaner.wasStopped {
                         EmptyState(systemImage: "sparkles", title: "Your Mac is tidy",
                                    message: "DiskScout couldn't find any junk in the usual places. Try Browse or Large & Old to hunt down big personal files.",
                                    tint: SafetyLevel.safe.color,
@@ -120,6 +120,7 @@ struct SmartCleanView: View {
 
     private var headline: String {
         if cleaner.isScanning && cleaner.items.isEmpty { return "Checking caches, logs, developer folders, leftovers and more…" }
+        if cleaner.wasStopped { return "The scan was stopped, so this list is incomplete. Rescan to check everything." }
         if cleaner.items.isEmpty { return "Nothing to clean right now." }
         let safe = cleaner.totalSafe
         if safe > 0 {

@@ -10,6 +10,9 @@ struct TrashRecord: Identifiable, Codable, Equatable {
     let date: Date
     let batchID: UUID
     var restored: Bool = false
+    /// The trashed item's file-system identity, so Put Back can't restore a different file that
+    /// later took the same name in the Trash.
+    var fileNumber: UInt64? = nil
 
     var originalURL: URL { URL(fileURLWithPath: originalPath) }
     var canPutBack: Bool { !restored && trashedPath != nil }
@@ -68,8 +71,11 @@ final class TrashManager: ObservableObject {
                 throw TrashError.permissionDenied(name: name, finderMessage: error.localizedDescription)
             }
         }
-        let record = TrashRecord(id: UUID(), name: name, originalPath: url.path, trashedPath: resulting?.path,
+        var record = TrashRecord(id: UUID(), name: name, originalPath: url.path, trashedPath: resulting?.path,
                                  size: size, date: Date(), batchID: batchID)
+        if let trashed = resulting?.path {
+            record.fileNumber = ((try? FileManager.default.attributesOfItem(atPath: trashed))?[.systemFileNumber] as? NSNumber)?.uint64Value
+        }
         history.insert(record, at: 0)
         if history.count > 500 { history.removeLast(history.count - 500) }
         lifetimeFreed += size
@@ -77,10 +83,22 @@ final class TrashManager: ObservableObject {
         return record
     }
 
+    /// Counts space freed somewhere without a Trash (a connected iPhone) towards the lifetime total.
+    func recordFreed(_ bytes: Int64) {
+        guard bytes > 0 else { return }
+        lifetimeFreed += bytes
+        save()
+    }
+
     func putBack(_ record: TrashRecord) throws {
         guard let trashed = record.trashedPath else { throw TrashError.missingInTrash(record.name) }
         let fm = FileManager.default
         guard fm.fileExists(atPath: trashed) else { throw TrashError.missingInTrash(record.name) }
+        if let expected = record.fileNumber {
+            let actual = ((try? fm.attributesOfItem(atPath: trashed))?[.systemFileNumber] as? NSNumber)?.uint64Value
+            // Same name, different file: the original was emptied from the Trash and another took its place.
+            guard actual == expected else { throw TrashError.missingInTrash(record.name) }
+        }
         if fm.fileExists(atPath: record.originalPath) { throw TrashError.alreadyExists(record.originalPath) }
         try fm.createDirectory(at: record.originalURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try fm.moveItem(atPath: trashed, toPath: record.originalPath)

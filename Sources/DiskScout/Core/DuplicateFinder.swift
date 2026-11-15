@@ -6,7 +6,7 @@ struct DuplicateGroup: Identifiable {
     let id = UUID()
     let hash: String
     let size: Int64
-    let files: [FileNode]
+    var files: [FileNode]
     var wastedSpace: Int64 { size * Int64(max(0, files.count - 1)) }
 }
 
@@ -21,11 +21,25 @@ final class DuplicateFinder: ObservableObject {
     @Published var error: String?
 
     private var task: Task<Void, Never>?
+    private var generation = 0
     var minSize: Int64 = 64 * 1024 // ignore tiny files (configs, icons) unless the user lowers this
 
     func cancel() {
         task?.cancel()
+        generation += 1
+        // A scan that didn't finish can't claim "no duplicates".
+        if isWorking { lastScannedRootID = nil }
         isWorking = false
+    }
+
+    /// Drops files that are gone (trashed) and groups that no longer have two copies.
+    func pruneMissing() {
+        let fm = FileManager.default
+        groups = groups.compactMap { g in
+            var g = g
+            g.files = g.files.filter { fm.fileExists(atPath: $0.url.path) }
+            return g.files.count >= 2 ? g : nil
+        }
     }
 
     var totalWasted: Int64 { groups.reduce(0) { $0 + $1.wastedSpace } }
@@ -39,6 +53,7 @@ final class DuplicateFinder: ObservableObject {
         skipped = 0
         error = nil
         lastScannedRootID = root.id
+        let scanID = generation
 
         let allFiles = root.allFiles().filter { $0.size >= minSize }
         totalToCheck = allFiles.count
@@ -51,7 +66,7 @@ final class DuplicateFinder: ObservableObject {
                 }
             }
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self, self.generation == scanID else { return }   // stopped or superseded
                 self.groups = result.sorted { $0.wastedSpace > $1.wastedSpace }
                 self.isWorking = false
             }

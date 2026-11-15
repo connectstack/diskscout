@@ -165,7 +165,7 @@ final class ScanEngine: ObservableObject {
                     self.current = node
                     self.path = [node]
                 case .failure(let err):
-                    self.lastError = err.localizedDescription
+                    if !(err is CancellationError) { self.lastError = err.localizedDescription }
                 }
             }
         }

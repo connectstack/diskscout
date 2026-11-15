@@ -346,7 +346,7 @@ struct MediaGalleryView: View {
 
 // MARK: - Chip
 
-private struct KindChip: View {
+struct KindChip: View {
     let title: String
     let systemImage: String
     let color: Color
@@ -367,6 +367,8 @@ private struct KindChip: View {
                     .background(Capsule().fill(selected ? Color.white.opacity(0.25) : color.opacity(0.15)))
                     .contentTransition(.numericText())
             }
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(selected ? Color.white : color)
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background {

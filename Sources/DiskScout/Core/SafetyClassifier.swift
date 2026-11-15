@@ -121,7 +121,8 @@ enum SafetyClassifier {
 
         // 3. The Trash itself.
         if path == home + "/.Trash" {
-            return .init(.safe, "Trash", "Everything in here is already deleted as far as you're concerned. Emptying the Trash frees the space for real.", regenerates: true)
+            // Emptying is the one Mac action here that can't be undone, so it is never bulk-selected as Safe.
+            return .init(.review, "Trash", "Files you already threw away. Emptying the Trash is permanent: nothing in it can be put back afterwards, including anything DiskScout moved there.")
         }
         if under(path, home + "/.Trash") {
             return .init(.safe, "Already in Trash", "You already deleted this. Emptying the Trash removes it permanently and frees the space.", regenerates: true)
@@ -152,6 +153,7 @@ enum SafetyClassifier {
             return assessHomeDotfile(name: name, isDirectory: isDirectory)
         }
         if let dotParent = homeDotfileParent(of: path) {
+            if let cache = toolCacheSubfolder(path: path) { return cache }
             return assessHomeDotfile(name: dotParent, isDirectory: true, nested: true)
         }
 
@@ -405,16 +407,31 @@ enum SafetyClassifier {
         return String(first)
     }
 
+    /// The parts of tool folders that really are just re-downloadable caches.
+    private static func toolCacheSubfolder(path: String) -> SafetyAssessment? {
+        let caches: [(String, String)] = [
+            (".bun/install/cache", "Bun"), (".yarn/cache", "Yarn"), (".yarn/berry/cache", "Yarn"),
+            (".gradle/caches", "Gradle"), (".gradle/daemon", "Gradle"), (".gradle/wrapper/dists", "Gradle"),
+        ]
+        for (sub, tool) in caches where under(path, home + "/" + sub) || path == home + "/" + sub {
+            return .init(.safe, "\(tool) cache", "Downloads \(tool) keeps so it doesn't fetch them again. Re-downloaded the next time they're needed.", regenerates: true)
+        }
+        return nil
+    }
+
     private static func assessHomeDotfile(name: String, isDirectory: Bool, nested: Bool = false) -> SafetyAssessment {
         switch name {
         case ".cache":
             return .init(.safe, "Tool cache", "Caches for command-line tools (pip, Hugging Face, Puppeteer…). Rebuilt or re-downloaded as needed. Hugging Face models in here can be many GB.", regenerates: true)
         case ".npm":
             return .init(.safe, "npm cache", "Downloaded JavaScript packages. Re-fetched on the next install.", regenerates: true, recreateHint: "npm cache clean --force")
-        case ".yarn", ".pnpm-store", ".bun":
+        case ".pnpm-store":
             return .init(.safe, "Package manager cache", "Downloaded JavaScript packages. Re-fetched on the next install.", regenerates: true)
+        case ".yarn", ".bun":
+            // These hold the tool itself and globally installed packages, not just a cache.
+            return .init(.review, "Package manager folder", "Holds the tool itself (the “\(name == ".bun" ? "bun" : "yarn")” command), packages you installed globally, and a download cache. Only the cache subfolder is rebuilt automatically; deleting the whole folder removes the tool.")
         case ".gradle":
-            return .init(.safe, "Gradle cache", "Downloaded dependencies and build caches for Android / JVM projects. Re-downloaded on the next build.", regenerates: true)
+            return .init(.review, "Gradle home", "Download caches plus your own Gradle settings (gradle.properties can hold signing passwords and tokens). The “caches” subfolder is safe to remove; the rest is yours.")
         case ".m2":
             return .init(.review, "Maven repository", "Downloaded Java dependencies. Re-downloaded when you build, which can be slow on a bad connection.")
         case ".cargo":
@@ -486,14 +503,19 @@ enum SafetyClassifier {
     private static func regenerableProjectFolder(name: String, parentPath: String) -> SafetyAssessment? {
         guard parentPath.hasPrefix(home + "/"), !parentPath.hasPrefix(home + "/Library") else { return nil }
         if let (headline, text, hint) = regenerableFolderNames[name] {
-            if name == "Build" || name == ".gradle" {
+            if ambiguousFolderNames.contains(name) {
                 // Only treat as regenerable when it clearly sits in a project folder.
                 guard looksLikeProjectFolder(parentPath) else { return nil }
             }
             let level: SafetyLevel = (name == ".venv" || name == "venv") ? .review : .safe
             return .init(level, headline, text + (hint.map { " Recreate with “\($0)”." } ?? " Rebuilt automatically the next time you build."), regenerates: true, recreateHint: hint)
         }
-        if name == "build" || name == "dist" || name == "out" || name == "target" {
+        if name == "out" {
+            // "out" is as often results you produced as it is build output.
+            guard looksLikeProjectFolder(parentPath) else { return nil }
+            return .init(.review, "Output folder", "Probably build output for the project in “\((parentPath as NSString).lastPathComponent)”, but “out” folders also hold results people generate on purpose. Look inside before deleting.")
+        }
+        if name == "build" || name == "dist" || name == "target" {
             guard looksLikeProjectFolder(parentPath) else { return nil }
             return .init(.safe, "Build output", "Compiled output for the project in “\((parentPath as NSString).lastPathComponent)”. Rebuilt the next time you build.", regenerates: true)
         }
@@ -505,13 +527,18 @@ enum SafetyClassifier {
         let comps = path.split(separator: "/").map(String.init)
         for (i, c) in comps.enumerated() where i < comps.count - 1 {
             if let (headline, _, hint) = regenerableFolderNames[c], c != "Build", c != ".gradle" {
+                // A folder that just happens to be called "Pods" or "venv" isn't one unless a project sits beside it.
+                if ambiguousFolderNames.contains(c), !looksLikeProjectFolder("/" + comps[..<i].joined(separator: "/")) { continue }
                 return .init(.safe, "Inside \(headline.lowercased())", "Part of “\(c)”, which is rebuilt by your tools. Deleting the whole “\(c)” folder is cleaner than picking files out of it." + (hint.map { " Recreate with “\($0)”." } ?? ""), regenerates: true, recreateHint: hint)
             }
         }
         return nil
     }
 
-    private static let projectMarkers = ["package.json", "Package.swift", "Cargo.toml", "build.gradle", "build.gradle.kts", "CMakeLists.txt", "pom.xml", "pyproject.toml", "setup.py", "Makefile", "go.mod", "pubspec.yaml", "Gemfile", "mix.exs", "tsconfig.json", "Podfile", "project.pbxproj", "settings.gradle", "settings.gradle.kts"]
+    /// Names ordinary folders also have; these only count as build products next to a project.
+    private static let ambiguousFolderNames: Set<String> = ["Build", ".gradle", "Pods", "Carthage", "DerivedData", "venv"]
+
+    private static let projectMarkers = ["Cartfile", "requirements.txt", "package.json", "Package.swift", "Cargo.toml", "build.gradle", "build.gradle.kts", "CMakeLists.txt", "pom.xml", "pyproject.toml", "setup.py", "Makefile", "go.mod", "pubspec.yaml", "Gemfile", "mix.exs", "tsconfig.json", "Podfile", "project.pbxproj", "settings.gradle", "settings.gradle.kts"]
 
     private static func looksLikeProjectFolder(_ path: String) -> Bool {
         let fm = FileManager.default
@@ -524,7 +551,8 @@ enum SafetyClassifier {
 
     private static let installerExt: Set<String> = ["dmg", "pkg", "mpkg", "xip", "iso", "img", "cdr"]
     private static let archiveExt: Set<String> = ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "zst", "sit", "sitx"]
-    private static let junkExt: Set<String> = ["log", "crash", "ips", "tmp", "temp", "part", "crdownload", "download", "spin", "hang", "diag", "swp"]
+    private static let diagnosticExt: Set<String> = ["crash", "ips", "spin", "hang", "diag"]
+    private static let junkExt: Set<String> = ["log", "tmp", "temp", "part", "crdownload", "download", "swp"]
 
     private static func byExtension(ext: String, name: String, isDirectory: Bool) -> SafetyAssessment? {
         if isDirectory { return nil }
@@ -534,8 +562,13 @@ enum SafetyClassifier {
         if archiveExt.contains(ext) {
             return .init(.review, "Archive", "A compressed archive. If you already extracted it (look for a folder with the same name), this copy is redundant.")
         }
+        if diagnosticExt.contains(ext) {
+            return .init(.safe, "Crash or diagnostic report", "A report macOS or an app wrote when something went wrong. Nothing uses it afterwards.", regenerates: true)
+        }
         if junkExt.contains(ext) {
-            return .init(.safe, "Temporary or log file", "Logs, crash reports and half-finished downloads. Nothing of yours is in here.", regenerates: true)
+            // Outside the Logs, Caches and temp locations (rated earlier), these can be yours:
+            // a log you're keeping, a download you could resume, an editor's unsaved-changes file.
+            return .init(.review, "Log or temporary file", "Usually leftover output or a half-finished download. Check it isn't a log you keep, a download you want to resume, or unsaved edits from a text editor.")
         }
         if ext == "xcarchive" { return .init(.review, "Xcode archive", "A build you archived for distribution. Needed to symbolicate crash reports from that release.") }
         if ext == "ipa" { return .init(.review, "iOS app package", "An exported iOS app build. Re-exportable from Xcode if you still have the archive.") }
@@ -573,6 +606,7 @@ enum SafetyClassifier {
     static let hardBlockExact: Set<String> = [
         "/", "/Applications", "/Library", "/Users", "/System",
         "/private", "/usr", "/bin", "/sbin", "/var", "/etc", "/opt", "/tmp",
+        "/private/var", "/private/etc", "/private/tmp",
         "/cores", "/dev", "/Volumes", "/Network", "/home", "/Users/Shared",
         "/Library/Application Support", "/Library/Preferences", "/Library/Caches", "/Library/Logs",
         "/opt/homebrew", "/usr/local"
@@ -615,4 +649,133 @@ enum SafetyClassifier {
         "Migration Assistant.app", "Siri.app", "Mission Control.app", "Launchpad.app",
         "App Store.app", "Contacts.app", "Journal.app", "Games.app", "Phone.app", "Utilities"
     ]
+}
+
+// MARK: - iPhone & iPad (over USB)
+//
+// iOS gives each app a private sandbox that no Mac app can open, so the only lever DiskScout has
+// is deleting the whole app (reinstalling from the App Store starts it fresh). Deleting on the
+// iPhone is permanent: there is no Trash and no Undo, so nothing here is ever rated Safe.
+
+extension SafetyClassifier {
+
+    /// Apps whose chats or history may exist only on the phone.
+    private static let iosLocalMessagingApps: Set<String> = [
+        "net.whatsapp.WhatsApp", "net.whatsapp.WhatsAppSMB", "org.whispersystems.signal",
+        "com.viber", "com.tencent.xin", "jp.naver.line", "ch.threema.iapp", "com.kakao.talk",
+    ]
+
+    /// Two-factor code generators.
+    private static let iosAuthenticatorApps: Set<String> = [
+        "com.google.Authenticator", "com.microsoft.azureauthenticator", "com.authy",
+        "com.lastpass.authenticator", "com.duosecurity.DuoMobile",
+    ]
+
+    static func assessIOSApp(bundleID: String, name: String, dataSize: Int64, fileSharing: Bool) -> SafetyAssessment {
+        let lower = name.lowercased()
+        if iosAuthenticatorApps.contains(bundleID) || lower.contains("authenticator") || lower.contains("2fa") {
+            return .init(.caution, "Two-factor codes",
+                         "This app may hold the only copy of the sign-in codes for some of your accounts. Deleting it can lock you out of them. Move or export your codes first.")
+        }
+        if lower.contains("wallet") || lower.contains("metamask") {
+            return .init(.caution, "Wallet app",
+                         "If this is a crypto wallet and you haven't written down its recovery phrase, deleting the app loses access to the funds for good.")
+        }
+        if iosLocalMessagingApps.contains(bundleID) {
+            return .init(.caution, "Chats stored on the phone",
+                         "Message history may live only on this iPhone. Deleting the app deletes it unless the app has made a backup (WhatsApp, for example, backs up to iCloud from Settings ▸ Chats ▸ Chat Backup).")
+        }
+        if fileSharing && dataSize > 50_000_000 {
+            return .init(.caution, "Keeps your documents",
+                         "This app stores documents on the iPhone that you can see in the Files app or in Finder. Deleting the app deletes those documents too, so copy anything you want to keep first.")
+        }
+        return .init(.review, "iPhone app",
+                     "Deleting removes the app and everything it saved on this iPhone, and it can't be undone. Most apps keep your account online, so after reinstalling from the App Store you sign in again and the app's data starts small.")
+    }
+
+    /// In-app ways to free space without deleting the app, where they exist.
+    static func iosAppTip(bundleID: String) -> String? {
+        switch bundleID {
+        case "net.whatsapp.WhatsApp", "net.whatsapp.WhatsAppSMB":
+            return "WhatsApp ▸ Settings ▸ Storage and Data ▸ Manage Storage removes big videos and forwarded files without deleting your chats."
+        case "ph.telegra.Telegraph":
+            return "Telegram ▸ Settings ▸ Data and Storage ▸ Storage Usage has Clear Cache. Your chats stay in Telegram's cloud."
+        case "com.spotify.client":
+            return "Spotify's settings have a Storage section with Clear cache. Downloaded music is kept."
+        case "com.netflix.Netflix":
+            return "Downloaded shows are usually most of this. Delete the ones you've watched from Netflix's Downloads."
+        case "com.google.ios.youtube":
+            return "Downloaded videos live in YouTube's Downloads. The rest is cache that only reinstalling clears."
+        case "com.burbn.instagram", "com.facebook.Facebook", "com.linkedin.LinkedIn":
+            return "This app has no clear-cache button. Deleting and reinstalling it is the only way to shrink its data; you'll sign in again."
+        case "com.zhiliaoapp.musically":
+            return "TikTok's Settings has Free up space, with a Clear button for the cache."
+        case "com.toyopagroup.picaboo":
+            return "Snapchat's Settings has Clear Cache. Your Memories aren't affected."
+        case "com.google.chrome.ios":
+            return "Chrome ▸ Settings ▸ Privacy and Security ▸ Delete Browsing Data clears cached pages."
+        case "com.google.Maps":
+            return "Offline maps can be large. Delete regions you don't need from Offline maps in your profile menu."
+        case "com.amazon.aiv.AIVApp", "com.disney.disneyplus", "com.hotstar.hotstar":
+            return "Downloaded videos are usually most of this. Delete them inside the app."
+        default:
+            return nil
+        }
+    }
+
+    /// Files in the iPhone's shared media area. DiskScout only lets you look at and copy these:
+    /// they belong to Apple's apps, which keep their own databases about them.
+    static func assessIOSFile(path: String, isDirectory: Bool, isLog: Bool) -> SafetyAssessment {
+        if isLog { return iosCrashLogs }
+        func under(_ top: String) -> Bool { path == "/" + top || path.hasPrefix("/" + top + "/") }
+        if path == "/" || path.isEmpty {
+            return .init(.protected, "iPhone media area", "The shared storage Apple's apps use for photos, music and books.")
+        }
+        if under("PhotoData") || under("MediaAnalysis") || under("CloudAssets") || under("Photos") {
+            return .init(.protected, "Photos library internals",
+                         "The Photos app's database, thumbnails, edits and iCloud sync state. Changing anything here can corrupt your photo library, so DiskScout only lets you look.")
+        }
+        if under("DCIM") {
+            if path.hasSuffix(".AAE") || path.hasSuffix(".aae") {
+                return .init(.review, "Photo edit", "Saved edits for the photo with the same name. Deleting the photo in the Photos app removes this too.")
+            }
+            return .init(.review, isDirectory ? "Camera roll folder" : "Photo or video",
+                         "Part of your photo library. Delete photos in the Photos app on the iPhone so albums, edits and iCloud Photos stay in sync. Copy anything you want to keep to your Mac first.")
+        }
+        if under("iTunes_Control") || under("Music") || under("Podcasts") || under("Radio") {
+            return .init(.caution, "Music library", "Songs and episodes the Music and Podcasts apps manage. Remove them from those apps, or from Finder ▸ your iPhone ▸ Music.")
+        }
+        if under("Books") {
+            return .init(.caution, "Books library", "Books and PDFs the Books app manages. Remove them in the Books app so its library stays correct.")
+        }
+        if under("Recordings") {
+            return .init(.caution, "Voice memo", "A recording from Voice Memos. Remove it in the Voice Memos app.")
+        }
+        if under("Downloads") {
+            return .init(.review, "System downloads", "Files left by downloads iOS made itself, such as updates in progress. iOS cleans these up on its own.")
+        }
+        return .init(.caution, "iPhone media file", "Part of the shared media area used by Apple's apps. Manage it from the app that created it.")
+    }
+
+    /// Files in an app's shared Documents folder (apps that let Finder and the Files app see them).
+    static func assessIOSAppDocument(path: String, isDirectory: Bool, kind: DeviceFileKind) -> SafetyAssessment {
+        let lower = path.lowercased()
+        if kind == .database || lower.contains(".sqlite") || lower.hasSuffix(".db") || lower.hasSuffix(".realm") || lower.contains("/mmkv") {
+            return .init(.caution, "App database",
+                         "The app's own database. Deleting it can sign you out, lose anything the app keeps only on this iPhone, or stop it working.")
+        }
+        if isDirectory {
+            return .init(.caution, "App folder", "A folder the app keeps in its shared Documents. What's inside belongs to the app; look before removing anything.")
+        }
+        switch kind {
+        case .photo, .screenshot, .video, .audio, .document:
+            return .init(.review, "File kept by the app",
+                         "Something the app saved in its Documents folder, such as a download, recording or export. Copy it to your Mac if you want it; the app can usually delete it too.")
+        default:
+            return .init(.caution, "App data", "A file the app uses itself. Removing it can reset settings or lose data the app needs.")
+        }
+    }
+
+    static let iosCrashLogs = SafetyAssessment(.safe, "Crash & diagnostic logs",
+        "Reports iOS writes when an app crashes or something goes wrong. Nothing on the iPhone uses them after they're written, so deleting them can't affect your apps or data.")
 }
